@@ -1,0 +1,90 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+	<modelVersion>4.0.0</modelVersion>
+	<groupId>pcp_capture_card_conf</groupId>
+	<artifactId>pcp_capture_card_conf</artifactId>
+	<version>1.0.1</version>
+	<packaging>rpm</packaging>
+	
+  <properties>
+		<name>PCP pcp_capture_card_conf - RPM </name>
+		<install.dir>/opt/ericsson/pcp_capture_card_conf</install.dir>
+	    <versioned.install.dir>${install.dir}/pcp_capture_card_conf-${project.version}</versioned.install.dir>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+		<cxc>CXC1734188</cxc>
+	</properties>
+  
+	<build>
+		<plugins>
+			<plugin>
+        
+				<groupId>org.codehaus.mojo</groupId>
+				<artifactId>rpm-maven-plugin</artifactId>
+				<version>2.1-alpha-1</version>
+				<extensions>true</extensions>
+        
+				<executions>
+					<execution>
+						<goals>
+							<goal>rpm</goal>
+						</goals>
+					</execution>
+				</executions>
+        
+				<configuration>
+          
+					<name>ERICpcp_capture_card_conf-${cxc}</name>
+					<copyright>comercial</copyright>
+					<group>Application/Collectors</group>
+					<needarch>x86_64</needarch>
+					<prefix>/opt/ericsson/pcp_capture_card_conf</prefix>
+					<release>${rstate}</release>
+          
+					<mappings>
+            
+						<mapping>
+							<directory>${install.dir}</directory>
+							<filemode>700</filemode>
+							<username>pcpuser</username>
+							<groupname>dc5000</groupname>
+						</mapping>
+            
+						<mapping>
+							<directory>${versioned.install.dir}</directory>
+							<filemode>700</filemode>
+							<username>pcpuser</username>
+							<groupname>dc5000</groupname>
+							<sources>
+								<source>
+									<location>napatech_conf/</location>
+								</source>
+							</sources>
+						</mapping>
+            
+					</mappings>
+          
+					<preinstallScriptlet>
+						<script>echo "Installing pcp_capture_card_conf compoment now"</script>
+					</preinstallScriptlet>
+          
+          <postinstallScriptlet>
+						<script>
+							if [ -L "/opt/ericsson/pcp_capture_card_conf/pcp_capture_card_conf" ]; then
+							rm /opt/ericsson/pcp_capture_card_conf/pcp_capture_card_conf
+							fi
+			
+							ln -s  ${versioned.install.dir} /opt/ericsson/pcp_capture_card_conf/pcp_capture_card_conf 
+              
+              # Adding ResetCaptureCard to /etc/rc.local so capture card comes back online after reboot.
+              if [ $(cat /etc/rc.local | grep ResetCaptureCard | wc -l) -eq 0 ]; then
+                echo '/opt/ericsson/pcp_capture_card_conf/pcp_capture_card_conf/ResetCaptureCard' >> /etc/rc.local
+              fi
+						</script>
+					</postinstallScriptlet>
+          
+				</configuration>
+			</plugin>
+		</plugins>
+	</build>
+  
+</project>

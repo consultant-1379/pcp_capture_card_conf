@@ -1,0 +1,209 @@
+#!/bin/bash
+# ----------------------------------------------------------------------
+# Packet Capture Pre-processor Reset Capture Card Script
+#
+# Usage:
+#
+#       ./ResetCaptureCard [ntp_server_ip_address]
+#
+#       exit  0 for success
+#       exit  1 for an incorrect IP address format
+#       exit  2 for too many args
+#       exit  3 for no filter type found.
+#
+#       Description:
+#           This script allows the Capture Card  processes to be restarted
+#           and ntpdate to be set on a PCP server.
+#           It takes one optional argument.
+#               * With zero arguments, it will ignore the ntpdate section.
+#                 Use this to simply reset the Capture Card service.
+#               * With one argument, run the ntpdate with the supplied
+#                 I.P. address.
+#           This script also;
+#              1. Stops the PCP-Pect application,
+#              2. Stops the capture card service,
+#              3. Enters the ntpdate section,
+#              4. Starts the capture card service,
+#              5. Applies the capture card filters for the configuration,
+#              6. Runs TcpDump for the user to analyise the streams.
+#              7. Starts the PCP-Pect appliction, if it was running when
+#                 the script was run.
+#
+#
+#               Author:         Luke Potter             elukpot
+#               Date:           02/07/2013
+#
+# ----------------------------------------------------------------------
+# Copyright (c) 1999 - 2013 AB Ericsson Oy  All rights reserved.
+# ----------------------------------------------------------------------
+# Version 1.3
+# ----------------------------------------------------------------------
+
+# Exit Contants
+SUCCESS=0
+BAD_IP_ADDRESS=1
+TOO_MANY_ARGS=2
+NO_FILTER_TYPE=3
+
+# Variables
+cc_sw_dir=/opt/napatech3/bin
+filter_type=$(cat /eniq/installation/config/sys_config.ini | grep filter_type | awk -F '=' '{print $2}')
+capture_card_conf_filter=/opt/ericsson/pcp_capture_card_conf/pcp_capture_card_conf/$filter_type/hash_by_ip-6.ntpl
+do_ntp_date_section=1
+ip_address_of_ntp_server='0.0.0.0'
+was_pcp_running=0
+
+# ----------------------------------------------------------------------
+# Function: Check Filter File 
+function check_valid_filter_type {
+    echo -e "    [INFO]    Confirming the filter type to use"
+	
+	if [ ! "${filter_type}" ]; then
+		echo -e "    [FAIL]    Could not get the filter type from /eniq/installation/config/sys_config.ini aborting, please confirm that the filter type has been set"
+		exit $NO_FILTER_TYPE
+	fi
+	
+	echo -e "    [INFO]    Filter type confirmed"
+}
+
+# ----------------------------------------------------------------------
+
+# Function: evaluate_ip_address
+function evaluate_ip_address {
+	_chk_ip_=$1
+	_err_flag_=0
+	
+	# Use Regex to identify pattern.
+	if [[ ${_chk_ip_} =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]; then
+		_orig_ifs_="$IFS"
+		IFS='.'
+
+		_chk_ip_array_=($_chk_ip_)
+		IFS="${_orig_ifs_}"
+		_array_length_="${#_chk_ip_array_[@]}"
+		
+		# Check for a dotted quad.
+		if [ ${_array_length_} -ne 4 ]; then
+			_err_flag_=1
+		fi
+
+		# Check the values of the dotted quad/
+		for (( i=0; i<${_array_length_}; i++ )); do
+			if [ ${_chk_ip_array_[$i]} -lt 0 -o ${_chk_ip_array_[$i]} -gt 255 ]; then
+				_err_flag_=1
+			fi
+		done
+	else
+		_err_flag_=1
+	fi
+
+	if [ ${_err_flag_} -eq 1 ]; then
+		echo -e "    [FAIL]    NTP Server's I.P. ( $_chk_ip_ ) is incorrect."
+		exit $BAD_IP_ADDRESS
+	else
+		echo -e "    [INFO]    NTP Server's I.P. address is of correct format."
+		ip_address_of_ntp_server=$_chk_ip_
+	fi
+}
+
+# ----------------------------------------------------------------------
+# Function: check_args
+function check_args {
+	# If zero args, set flag to ignore the ntpdate section.
+	if [ $# = 0 ]; then
+		do_ntp_date_section=0
+	# If one arg, evaluate the IP address,
+	# don't change the flag to run the ntpdate in the middle.
+	elif [ $# = 1 ]; then
+		evaluate_ip_address $1
+	# Else throw TOO_MANY_ARGS error.
+	else
+		echo "    [FAIL]    Too many arguments passed."
+		echo ""
+		echo "              Usage: ./ResetCaptureCard [ntp_server_ip_address]"
+		echo "              E.g ./ResetCaptureCard 127.0.0.1"
+		echo "                  ./ResetCaptureCard"
+		exit $TOO_MANY_ARGS
+	fi
+}
+
+# ----------------------------------------------------------------------
+# Function: stop_pcp
+function stop_pcp {
+	echo "    [INFO]    Stopping processes using Napatech."
+	pid=$(ps -ef | grep pec[t] | awk '{print $2}')
+	
+	if [ "$pid" != "" ]; then
+		was_pcp_running=1
+	fi
+	
+	service pcp stop
+
+	pid=$(ps -ef | grep pec[t] | awk '{print $2}')
+
+	if [ "$pid" != "" ]; then
+		kill -9 $pid
+	fi
+}
+
+# ----------------------------------------------------------------------
+# Function: stop_capture_card_software
+function stop_capture_card_software {
+	# Stop capture card software
+	$cc_sw_dir/ntstop.sh
+}
+
+# ----------------------------------------------------------------------
+# Function: ntpdate_section
+function ntpdate_section {
+	if [ $do_ntp_date_section -eq 1 ]; then
+		# Synchronise server with NTP
+		echo "    [INFO]   Setting the NTP Date from $ip_address_of_ntp_server."
+		ntpdate $ip_address_of_ntp_server
+	fi
+}
+
+# ----------------------------------------------------------------------
+# Function: start_capture_card_software
+function start_capture_card_software {
+	# Start capture card software
+	$cc_sw_dir/ntstart.sh
+}
+
+# ----------------------------------------------------------------------
+# Function: apply_filters
+function apply_filters {
+	# Apply Filters
+	$cc_sw_dir/ntpl -f $capture_card_conf_filter
+}
+
+# ----------------------------------------------------------------------
+# Function: tcp_dump
+function tcp_dump {
+	# TCP Dump
+	tcpdump -D
+}
+
+# ----------------------------------------------------------------------
+# Function: start_pcp
+function start_pcp {
+	if [ $was_pcp_running -eq 1 ]; then
+		service pcp start
+	fi
+}
+
+# ----------------------------------------------------------------------
+# Stagelist
+check_args $@
+stop_pcp
+echo "    [START]   Reseting Capture Card Software."
+check_valid_filter_type
+stop_capture_card_software
+ntpdate_section
+start_capture_card_software
+apply_filters
+tcp_dump
+echo "    [FINISH]  Capture Card Software Reset."
+start_pcp
+
+exit $SUCCESS

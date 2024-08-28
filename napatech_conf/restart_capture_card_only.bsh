@@ -1,0 +1,44 @@
+# ********************************************************************
+# Ericsson Radio Systems AB                                     SCRIPT
+# ********************************************************************
+#
+#
+# (c) Ericsson Radio Systems AB 2011 - All rights reserved.
+#
+# The copyright to the computer program(s) herein is the property
+# of Ericsson Radio Systems AB, Sweden. The programs may be used
+# and/or copied only with the written permission from Ericsson Radio
+# Systems AB or in accordance with the terms and conditions stipulated
+# in the agreement/contract under which the program(s) have been
+# supplied.
+#
+# ********************************************************************
+# Name    : restart_capture_card_only.bsh
+# Date    : 29/08/2013
+# Revision: R1A01
+# Purpose :
+# usage   : ./restart_capture_card_only.bsh <path to file containing NTPL commands> 
+#
+# ********************************************************************
+
+
+EXIT_NORMAL=0;
+EXIT_FAILED=1;
+
+NTPL_FILE=$1
+
+
+if [ $# -ne 1 ]; then
+    echo "    [ ERROR ]   Incorrect Args Supplied, please supply correct args."
+    echo "Usage is:      ./restart_capture_card_only.bsh <path to file containing NTPL commands>"
+    exit $EXIT_FAILED
+fi
+
+cd /opt/napatech3/bin
+./ntstop.sh
+chmod 644 ../config/nt*
+./ntunload.sh
+./ntstart.sh
+./ntpl -f $NTPL_FILE
+tcpdump -D|grep nt3g
+
